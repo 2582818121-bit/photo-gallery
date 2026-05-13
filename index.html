@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>我的相册</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0d0d0d;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── 密码页 ── */
+    #auth-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 20px;
+    }
+    #auth-screen h1 { font-size: 2rem; letter-spacing: 2px; color: #eee; }
+    #auth-screen p  { color: #888; font-size: 0.9rem; }
+    #auth-form {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    #pwd-input {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #fff;
+      padding: 10px 16px;
+      font-size: 1rem;
+      outline: none;
+      width: 220px;
+      transition: border-color .2s;
+    }
+    #pwd-input:focus { border-color: #666; }
+    #auth-btn {
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-size: 1rem;
+      cursor: pointer;
+      font-weight: 600;
+      transition: opacity .2s;
+    }
+    #auth-btn:hover { opacity: .85; }
+    #auth-error {
+      color: #ff6b6b;
+      font-size: 0.85rem;
+      display: none;
+    }
+
+    /* ── 相册页 ── */
+    #gallery-screen { display: none; }
+
+    header {
+      padding: 24px 32px;
+      border-bottom: 1px solid #1e1e1e;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { font-size: 1.4rem; letter-spacing: 1px; color: #ddd; }
+    #photo-count { color: #555; font-size: 0.85rem; }
+
+    #loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 80px;
+      gap: 12px;
+      color: #555;
+    }
+    .spinner {
+      width: 24px; height: 24px;
+      border: 2px solid #333;
+      border-top-color: #888;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #empty-state {
+      display: none;
+      text-align: center;
+      padding: 100px 20px;
+      color: #444;
+    }
+    #empty-state svg { margin-bottom: 16px; opacity: .3; }
+    #empty-state p { font-size: 1.1rem; }
+
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      padding: 4px;
+    }
+    @media (max-width: 768px) { #grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 480px) { #grid { grid-template-columns: 1fr; } }
+
+    .photo-item {
+      position: relative;
+      aspect-ratio: 1;
+      overflow: hidden;
+      cursor: pointer;
+      background: #1a1a1a;
+    }
+    .photo-item img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transition: transform .3s ease, opacity .3s;
+      opacity: 0;
+    }
+    .photo-item img.loaded { opacity: 1; }
+    .photo-item:hover img { transform: scale(1.04); }
+    .photo-item::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: rgba(0,0,0,0);
+      transition: background .2s;
+    }
+    .photo-item:hover::after { background: rgba(0,0,0,.15); }
+
+    /* ── Lightbox ── */
+    #lightbox {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.95);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    #lightbox.open { display: flex; }
+    #lb-img {
+      max-width: 90vw;
+      max-height: 90vh;
+      object-fit: contain;
+      border-radius: 4px;
+      box-shadow: 0 0 60px rgba(0,0,0,.8);
+    }
+    .lb-btn {
+      position: absolute;
+      background: rgba(255,255,255,.1);
+      border: none;
+      color: #fff;
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      font-size: 1.4rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .2s;
+    }
+    .lb-btn:hover { background: rgba(255,255,255,.25); }
+    #lb-close { top: 20px; right: 20px; font-size: 1.2rem; }
+    #lb-prev  { left: 20px; }
+    #lb-next  { right: 20px; }
+    #lb-counter {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #666;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+
+<!-- 密码验证 -->
+<div id="auth-screen">
+  <h1>🔒 我的相册</h1>
+  <p>请输入访问密码</p>
+  <div id="auth-form">
+    <input id="pwd-input" type="password" placeholder="输入密码" autofocus>
+    <button id="auth-btn">进入</button>
+  </div>
+  <div id="auth-error">密码错误，请重试</div>
+</div>
+
+<!-- 相册主页 -->
+<div id="gallery-screen">
+  <header>
+    <h1>📷 我的相册</h1>
+    <span id="photo-count"></span>
+  </header>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <span>加载中...</span>
+  </div>
+
+  <div id="empty-state">
+    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+      <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+      <polyline points="21 15 16 10 5 21"/>
+    </svg>
+    <p>还没有照片，使用 upload.sh 上传吧</p>
+  </div>
+
+  <div id="grid"></div>
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox">
+  <button class="lb-btn" id="lb-close">✕</button>
+  <button class="lb-btn" id="lb-prev">‹</button>
+  <img id="lb-img" src="" alt="">
+  <button class="lb-btn" id="lb-next">›</button>
+  <div id="lb-counter"></div>
+</div>
+
+<script>
+  // ── 配置 ──
+  const PASSWORD = 'photo2024';
+  const SESSION_KEY = 'gallery_auth';
+
+  // ── 密码验证 ──
+  const authScreen   = document.getElementById('auth-screen');
+  const galleryScreen = document.getElementById('gallery-screen');
+  const pwdInput     = document.getElementById('pwd-input');
+  const authBtn      = document.getElementById('auth-btn');
+  const authError    = document.getElementById('auth-error');
+
+  function tryAuth() {
+    if (pwdInput.value === PASSWORD) {
+      sessionStorage.setItem(SESSION_KEY, '1');
+      authScreen.style.display = 'none';
+      galleryScreen.style.display = 'block';
+      loadPhotos();
+    } else {
+      authError.style.display = 'block';
+      pwdInput.value = '';
+      pwdInput.focus();
+    }
+  }
+
+  authBtn.addEventListener('click', tryAuth);
+  pwdInput.addEventListener('keydown', e => { if (e.key === 'Enter') tryAuth(); });
+
+  if (sessionStorage.getItem(SESSION_KEY) === '1') {
+    authScreen.style.display = 'none';
+    galleryScreen.style.display = 'block';
+    loadPhotos();
+  }
+
+  // ── 加载照片 ──
+  let photos = [];
+  let currentIndex = 0;
+
+  async function loadPhotos() {
+    try {
+      const resp = await fetch('photos.json?t=' + Date.now());
+      const data = await resp.json();
+      photos = data.photos || [];
+    } catch(e) {
+      photos = [];
+    }
+
+    document.getElementById('loading').style.display = 'none';
+
+    if (photos.length === 0) {
+      document.getElementById('empty-state').style.display = 'block';
+      return;
+    }
+
+    document.getElementById('photo-count').textContent = photos.length + ' 张照片';
+    renderGrid();
+  }
+
+  function renderGrid() {
+    const grid = document.getElementById('grid');
+    grid.innerHTML = '';
+    photos.forEach((url, i) => {
+      const item = document.createElement('div');
+      item.className = 'photo-item';
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = '';
+      img.loading = 'lazy';
+      img.onload = () => img.classList.add('loaded');
+      img.onerror = () => item.style.display = 'none';
+      item.appendChild(img);
+      item.addEventListener('click', () => openLightbox(i));
+      grid.appendChild(item);
+    });
+  }
+
+  // ── Lightbox ──
+  const lightbox = document.getElementById('lightbox');
+  const lbImg    = document.getElementById('lb-img');
+  const lbCounter = document.getElementById('lb-counter');
+
+  function openLightbox(i) {
+    currentIndex = i;
+    lbImg.src = photos[i];
+    lbCounter.textContent = (i + 1) + ' / ' + photos.length;
+    lightbox.classList.add('open');
+  }
+
+  function closeLightbox() {
+    lightbox.classList.remove('open');
+    lbImg.src = '';
+  }
+
+  function prevPhoto() {
+    currentIndex = (currentIndex - 1 + photos.length) % photos.length;
+    lbImg.src = photos[currentIndex];
+    lbCounter.textContent = (currentIndex + 1) + ' / ' + photos.length;
+  }
+
+  function nextPhoto() {
+    currentIndex = (currentIndex + 1) % photos.length;
+    lbImg.src = photos[currentIndex];
+    lbCounter.textContent = (currentIndex + 1) + ' / ' + photos.length;
+  }
+
+  document.getElementById('lb-close').addEventListener('click', closeLightbox);
+  document.getElementById('lb-prev').addEventListener('click', prevPhoto);
+  document.getElementById('lb-next').addEventListener('click', nextPhoto);
+  lightbox.addEventListener('click', e => { if (e.target === lightbox) closeLightbox(); });
+
+  document.addEventListener('keydown', e => {
+    if (!lightbox.classList.contains('open')) return;
+    if (e.key === 'Escape')      closeLightbox();
+    if (e.key === 'ArrowLeft')   prevPhoto();
+    if (e.key === 'ArrowRight')  nextPhoto();
+  });
+</script>
+</body>
+</html>
